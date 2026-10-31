@@ -8,19 +8,23 @@ public class EarlyRepaymentCalculator {
             int monthsPaid,
             double extraPayment
     ) {
+        if (loan == null) {
+            throw new IllegalArgumentException(
+                    "Loan cannot be null."
+            );
+        }
 
         if (monthsPaid < 0 ||
                 monthsPaid >= loan.getTermMonths()) {
-
             throw new IllegalArgumentException(
                     "Invalid number of months paid."
             );
         }
 
-        if (extraPayment <= 0) {
-
+        if (!Double.isFinite(extraPayment) ||
+                extraPayment <= 0) {
             throw new IllegalArgumentException(
-                    "Extra payment must be greater than zero."
+                    "Extra payment must be a finite positive number."
             );
         }
 
@@ -32,85 +36,80 @@ public class EarlyRepaymentCalculator {
 
         double balance = loan.getPrincipal();
 
+        // Calculate balance after payments already made
         for (int month = 1; month <= monthsPaid; month++) {
-
             double interest = balance * monthlyRate;
-
             double principalPayment =
-                    monthlyPayment - interest;
+                    Math.min(balance, monthlyPayment - interest);
 
             balance -= principalPayment;
 
-            if (balance <= 0) {
+            if (balance < 0.000001) {
                 balance = 0;
                 break;
             }
         }
 
         if (balance == 0) {
-
             System.out.println(
                     "The loan is already fully repaid."
             );
-
             return;
         }
 
         double originalRemainingBalance = balance;
 
-        balance -= extraPayment;
+        // Do not allow repayment to exceed remaining balance
+        double actualExtraPayment =
+                Math.min(extraPayment, originalRemainingBalance);
 
-        if (balance < 0) {
-            balance = 0;
+        double newBalance =
+                originalRemainingBalance - actualExtraPayment;
+
+        if (newBalance < 0.000001) {
+            newBalance = 0;
         }
 
+        // Interest without early repayment
         double interestBeforeExtraPayment = 0;
-
-        double interestAfterExtraPayment = 0;
-
         double originalBalance = originalRemainingBalance;
 
         for (int month = monthsPaid + 1;
-             month <= loan.getTermMonths();
+             month <= loan.getTermMonths() && originalBalance > 0;
              month++) {
 
             double interest = originalBalance * monthlyRate;
-
-            double principalPayment = monthlyPayment - interest;
-
-            if (principalPayment > originalBalance) {
-                principalPayment = originalBalance;
-            }
+            double principalPayment =
+                    Math.min(originalBalance, monthlyPayment - interest);
 
             originalBalance -= principalPayment;
-
             interestBeforeExtraPayment += interest;
 
-            if (originalBalance <= 0) {
-                break;
+            if (originalBalance < 0.000001) {
+                originalBalance = 0;
             }
         }
 
+        // Interest after early repayment
+        double interestAfterExtraPayment = 0;
         int newMonths = 0;
+        double remainingBalance = newBalance;
 
-        while (balance > 0 && newMonths < 1000) {
+        int maximumMonths = loan.getTermMonths() - monthsPaid;
 
-            double interest = balance * monthlyRate;
+        while (remainingBalance > 0 &&
+                newMonths < maximumMonths) {
 
-            double principalPayment = monthlyPayment - interest;
+            double interest = remainingBalance * monthlyRate;
+            double principalPayment =
+                    Math.min(remainingBalance, monthlyPayment - interest);
 
-            if (principalPayment > balance) {
-                principalPayment = balance;
-            }
-
-            balance -= principalPayment;
-
+            remainingBalance -= principalPayment;
             interestAfterExtraPayment += interest;
-
             newMonths++;
 
-            if (balance < 0.000001) {
-                balance = 0;
+            if (remainingBalance < 0.000001) {
+                remainingBalance = 0;
             }
         }
 
@@ -119,7 +118,6 @@ public class EarlyRepaymentCalculator {
                         interestAfterExtraPayment;
 
         System.out.println();
-
         System.out.println("===== EARLY REPAYMENT =====");
 
         System.out.printf(
@@ -129,12 +127,12 @@ public class EarlyRepaymentCalculator {
 
         System.out.printf(
                 "Extra payment: %.2f RON%n",
-                extraPayment
+                actualExtraPayment
         );
 
         System.out.printf(
                 "New balance: %.2f RON%n",
-                Math.max(0, originalRemainingBalance - extraPayment)
+                newBalance
         );
 
         System.out.printf(
